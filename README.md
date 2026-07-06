@@ -2,7 +2,9 @@
 
 Extract and install AppImages properly — no FUSE overhead, no tmpfs RAM waste, with full desktop integration.
 
-## Why?
+
+
+## Why use this?
 
 AppImages use FUSE to mount a compressed filesystem into `/tmp` (often tmpfs = RAM) every time you run them. On a 16GB laptop running heavy workloads, this wastes hundreds of MB of RAM per app and adds latency to every file read through the FUSE layer.
 
