@@ -45,6 +45,9 @@ appimage-install ~/Downloads/VSCode.AppImage --no-sandbox
 # Custom name
 appimage-install ~/Downloads/MyApp.AppImage --name myapp
 
+# Optimize for size/launch speed (strips debug symbols, unused locales, docs)
+appimage-install ~/Downloads/MyApp.AppImage --optimize
+
 # List installed apps
 appimage-install --list
 
@@ -61,11 +64,22 @@ appimage-install --remove myapp
 ## What it does
 
 1. Extracts the AppImage with `--appimage-extract`
-2. Moves it to `~/.local/opt/<name>/`
-3. Auto-detects the icon (PNG/SVG from embedded hicolor or root)
-4. Creates a `.desktop` entry in `~/.local/share/applications/`
-5. Symlinks `AppRun` to `~/.local/bin/<name>` for terminal use
-6. Removes the original `.AppImage` file
+2. Optionally optimizes the install (with `--optimize`)
+3. Moves it to `~/.local/opt/<name>/`
+4. Auto-detects the icon (PNG/SVG from embedded hicolor or root)
+5. Creates a `.desktop` entry in `~/.local/share/applications/`
+6. Symlinks `AppRun` to `~/.local/bin/<name>` for terminal use
+7. Removes the original `.AppImage` file
+
+## Performance optimization (`--optimize`)
+
+Pass `--optimize` when installing to make the extracted app smaller and slightly faster to load:
+
+- **Strips debug symbols** from every ELF binary and shared library.
+- **Removes unused locales** — keeps only your current locale plus English/C/POSIX fallbacks.
+- **Removes documentation** such as `man`, `info`, `doc`, and `help` directories.
+
+This reduces disk footprint and cache pressure, which improves cold-start times for large Electron/Qt apps. The optimization setting is saved in the `.desktop` entry and is automatically reapplied on `--update`.
 
 ## Requirements
 

@@ -5,6 +5,7 @@
 # Usage:
 #   appimage-install <file.AppImage>              # Install with auto-detected name
 #   appimage-install <file.AppImage> --name myapp # Install with custom name
+#   appimage-install <file.AppImage> --optimize   # Install with size/speed optimizations
 #   appimage-install --update <name>              # Update an installed app
 #   appimage-install --list                       # List installed apps
 #   appimage-install --remove <name>              # Remove an installed app
@@ -34,6 +35,7 @@ appimage-install — Extract & install AppImages without FUSE overhead
 USAGE:
     appimage-install <file.AppImage>              Install with auto-detected name
     appimage-install <file.AppImage> --name myapp Install with custom name
+    appimage-install <file.AppImage> --optimize   Install with size/speed optimizations
     appimage-install --update <name>              Update an installed app from GitHub
     appimage-install --update-all                 Update all installed apps
     appimage-install --list                       List installed apps
@@ -42,11 +44,14 @@ USAGE:
 OPTIONS:
     --name <name>    Override the app name (used for folder and command name)
     --no-sandbox     Add --no-sandbox flag to Exec (needed for Electron apps)
+    --optimize       Strip debug symbols and remove unused locales/docs for a smaller,
+                     faster install (also enables --optimize on future --update)
     --help           Show this help
 
 EXAMPLES:
     appimage-install ~/Downloads/MyApp.AppImage
     appimage-install MyApp.AppImage --name myapp
+    appimage-install MyApp.AppImage --optimize
     appimage-install --update t3code
     appimage-install --update-all
     appimage-install --remove myapp
@@ -54,16 +59,17 @@ EXAMPLES:
 
 WHAT IT DOES:
     1. Extracts the AppImage (no more FUSE/tmpfs RAM usage)
-    2. Moves it to ~/.local/opt/<name>/
-    3. Finds the icon and creates a .desktop entry
-    4. Creates a symlink in ~/.local/bin/ for terminal launch
-    5. Removes the original .AppImage file
+    2. (Optional with --optimize) Strips debug symbols and unused locales/docs
+    3. Moves it to ~/.local/opt/<name>/
+    4. Finds the icon and creates a .desktop entry
+    5. Creates a symlink in ~/.local/bin/ for terminal launch
+    6. Removes the original .AppImage file
 
 AUTO-UPDATE:
     Apps installed from GitHub-released AppImages can be updated with --update.
     The script reads app-update.yml from the installed app to find the GitHub
     repo, checks for a newer release, downloads the new AppImage, and
-    re-extracts it — preserving your desktop entry and command.
+    re-extracts it — preserving your desktop entry, command, and optimization setting.
 
 EOF
     exit 0
@@ -169,6 +175,127 @@ detect_mimetype() {
 
     if [[ -n "$desktop_file" ]]; then
         grep -i "^MimeType=" "$desktop_file" 2>/dev/null | cut -d= -f2
+    fi
+}
+
+# Performance optimization helpers: strip debug symbols, remove unused locales/docs
+get_keep_locales() {
+    local lang="${LANG:-en_US}"
+    lang="${lang%%.*}"      # drop .UTF-8, etc.
+    lang="${lang%%@*}"      # drop @euro, etc.
+    local primary="${lang%%_*}"
+    echo "en en_US en_GB ${lang} ${primary} C POSIX"
+}
+
+strip_debug_symbols() {
+    local app_dir="$1"
+    local stripped=0
+    local saved=0
+
+    if ! command -v strip >/dev/null 2>&1; then
+        echo "0 0"
+        return
+    fi
+
+    while IFS= read -r -d '' file; do
+        # Only strip actual ELF files (not symlinks)
+        if [[ -f "$file" && "$(file -b "$file" 2>/dev/null)" == ELF* ]]; then
+            local size_before size_after
+            size_before=$(stat -c%s "$file" 2>/dev/null || echo 0)
+            if strip --strip-debug "$file" 2>/dev/null; then
+                size_after=$(stat -c%s "$file" 2>/dev/null || echo 0)
+                ((saved += size_before - size_after))
+                ((stripped++)) || true
+            fi
+        fi
+    done < <(find "$app_dir" -type f -print0 2>/dev/null)
+
+    echo "$stripped $saved"
+}
+
+clean_locales() {
+    local app_dir="$1"
+    local removed=0
+    local keep
+    keep=$(get_keep_locales)
+
+    for locale_dir in "$app_dir"/usr/share/locale "$app_dir"/usr/share/locales; do
+        [[ -d "$locale_dir" ]] || continue
+        for dir in "$locale_dir"/*/; do
+            [[ -d "$dir" ]] || continue
+            local name
+            name=$(basename "$dir")
+            # Keep if name matches any kept locale exactly or starts with a kept locale prefix
+            local keep_it=false
+            for k in $keep; do
+                if [[ "$name" == "$k" || "$name" == "$k"@* || "$name" == "$k".* ]]; then
+                    keep_it=true
+                    break
+                fi
+            done
+            if [[ "$keep_it" == false ]]; then
+                rm -rf "$dir"
+                ((removed++)) || true
+            fi
+        done
+    done
+
+    echo "$removed"
+}
+
+clean_docs() {
+    local app_dir="$1"
+    local removed=0
+    for subdir in "usr/share/man" "usr/share/info" "usr/share/doc" "usr/share/help"; do
+        local dir="${app_dir}/${subdir}"
+        if [[ -d "$dir" ]]; then
+            rm -rf "$dir"
+            ((removed++)) || true
+        fi
+    done
+    echo "$removed"
+}
+
+format_bytes() {
+    local bytes="$1"
+    if command -v numfmt >/dev/null 2>&1; then
+        numfmt --to=iec "$bytes" 2>/dev/null || echo "${bytes}B"
+    else
+        echo "${bytes}B"
+    fi
+}
+
+optimize_app_dir() {
+    local app_dir="$1"
+    local before after saved saved_h
+
+    before=$(du -sb "$app_dir" 2>/dev/null | cut -f1)
+
+    info "Optimizing installation for performance..."
+
+    local stripped_count saved_bytes
+    read -r stripped_count saved_bytes <<< "$(strip_debug_symbols "$app_dir")"
+    if [[ "$stripped_count" -gt 0 ]]; then
+        ok "Stripped debug symbols from ${stripped_count} binaries (saved $(format_bytes "$saved_bytes"))"
+    fi
+
+    local removed_locales
+    removed_locales=$(clean_locales "$app_dir")
+    if [[ "$removed_locales" -gt 0 ]]; then
+        ok "Removed ${removed_locales} unused locale directories"
+    fi
+
+    local removed_docs
+    removed_docs=$(clean_docs "$app_dir")
+    if [[ "$removed_docs" -gt 0 ]]; then
+        ok "Removed documentation and man pages"
+    fi
+
+    after=$(du -sb "$app_dir" 2>/dev/null | cut -f1)
+    saved=$((before - after))
+    if [[ "$saved" -gt 0 ]]; then
+        saved_h=$(format_bytes "$saved")
+        ok "Total size reduction: ${saved_h}"
     fi
 }
 
@@ -314,11 +441,17 @@ do_update() {
     chmod +x "$tmpfile"
     ok "Downloaded $(du -h "$tmpfile" | cut -f1)"
 
-    # Check if desktop entry has --no-sandbox
+    # Check if desktop entry has --no-sandbox or was optimized
     local no_sandbox_flag=""
+    local optimize=false
     local desktop_file="${DESKTOP_DIR}/${app_name}.desktop"
-    if [[ -f "$desktop_file" ]] && grep -q "\-\-no-sandbox" "$desktop_file"; then
-        no_sandbox_flag="--no-sandbox"
+    if [[ -f "$desktop_file" ]]; then
+        if grep -q "\-\-no-sandbox" "$desktop_file"; then
+            no_sandbox_flag="--no-sandbox"
+        fi
+        if grep -q "^X-AppImage-Optimized=true" "$desktop_file" 2>/dev/null; then
+            optimize=true
+        fi
     fi
 
     # Re-install (do_install handles replacing existing)
@@ -340,6 +473,11 @@ do_update() {
     local apprun="${tmpdir}/squashfs-root/AppRun"
     if [[ -f "$apprun" ]] && grep -q 'if \[ -z "$APPDIR" \]' "$apprun" 2>/dev/null; then
         sed -i '/if \[ -z "$APPDIR" \]/,/^fi$/c\APPDIR="$(dirname "$(readlink -f "${THIS}")")"' "$apprun"
+    fi
+
+    # Re-apply optimizations if the previous install was optimized
+    if [[ "$optimize" == true ]]; then
+        optimize_app_dir "${tmpdir}/squashfs-root"
     fi
 
     # Replace installation
@@ -387,6 +525,7 @@ do_update() {
         [[ -n "$mimetype" ]] && echo "MimeType=${mimetype}"
         echo "Categories=${categories}"
         echo "X-AppImage-Version=${latest_version}"
+        [[ "$optimize" == true ]] && echo "X-AppImage-Optimized=true"
         echo "X-InstalledBy=appimage-install"
     } > "$desktop_file"
 
@@ -445,11 +584,10 @@ do_update_all() {
 }
 
 do_install() {
-    local appimage="$1"
-    shift
-
+    local appimage=""
     local custom_name=""
     local no_sandbox=false
+    local optimize=false
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -461,12 +599,31 @@ do_install() {
                 no_sandbox=true
                 shift
                 ;;
-            *)
+            --optimize|--strip)
+                optimize=true
+                shift
+                ;;
+            -*)
                 error "Unknown option: $1"
                 exit 1
                 ;;
+            *)
+                if [[ -z "$appimage" ]]; then
+                    appimage="$1"
+                else
+                    error "Unexpected argument: $1"
+                    exit 1
+                fi
+                shift
+                ;;
         esac
     done
+
+    if [[ -z "$appimage" ]]; then
+        error "No AppImage file specified"
+        usage
+        exit 1
+    fi
 
     # Resolve to absolute path
     APPIMAGE_PATH="$(realpath "$appimage")"
@@ -526,6 +683,11 @@ do_install() {
 
     info "App name:     ${app_name}"
     info "Display name: ${display_name}"
+
+    # Optimize installation size/performance before moving into place
+    if [[ "$optimize" == true ]]; then
+        optimize_app_dir "${tmpdir}/squashfs-root"
+    fi
 
     # Check for existing installation
     local install_path="${INSTALL_DIR}/${app_name}"
@@ -604,6 +766,7 @@ do_install() {
         [[ -n "$mimetype" ]] && echo "MimeType=${mimetype}"
         echo "Categories=${categories}"
         [[ -n "$version" && "$version" != "unknown" ]] && echo "X-AppImage-Version=${version}"
+        [[ "$optimize" == true ]] && echo "X-AppImage-Optimized=true"
         echo "X-InstalledBy=appimage-install"
     } > "$desktop_file"
 
