@@ -61,6 +61,26 @@ appimage-install --update appimage
 appimage-install --remove myapp
 ```
 
+## Interactive TUI
+
+For a menu-driven interface, install the optional TUI:
+
+```bash
+# One-line install
+curl -fsSL https://raw.githubusercontent.com/Yug3ne/appimage-installer/main/install-tui.sh | bash
+
+# Then run
+appimage-install-tui
+```
+
+Controls:
+- `↑`/`↓` or letter keys to navigate
+- `Enter` to select
+- `Esc` to go back
+- `q` to quit
+
+The TUI is built with Bun and provides the same install, list, update, and remove commands through an interactive terminal UI.
+
 ## What it does
 
 1. Extracts the AppImage with `--appimage-extract`
