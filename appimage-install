@@ -11,7 +11,7 @@
 #   appimage-install --remove <name>              # Remove an installed app
 #   appimage-install --help                       # Show help
 
-set -uo pipefail
+set -euo pipefail
 
 INSTALL_DIR="${HOME}/.local/opt"
 DESKTOP_DIR="${HOME}/.local/share/applications"
@@ -79,10 +79,12 @@ find_icon() {
     local app_dir="$1"
     local icon=""
 
-    # Look for the largest PNG icon in hicolor
-    icon=$(find "${app_dir}/usr/share/icons" -name "*.png" 2>/dev/null \
-        | sort -t/ -k8 -rn \
-        | head -1)
+    # Look for the largest PNG icon in hicolor by numeric resolution
+    icon=$(find "${app_dir}/usr/share/icons/hicolor" -name "*.png" -type f 2>/dev/null \
+        | sed -n 's|.*/\([0-9]\+\)x[0-9]*/.*|\1 &|p' \
+        | sort -rn \
+        | head -1 \
+        | cut -d' ' -f2-)
 
     # Fallback: any .png in the root of the extracted dir
     if [[ -z "$icon" ]]; then
@@ -204,8 +206,8 @@ strip_debug_symbols() {
             size_before=$(stat -c%s "$file" 2>/dev/null || echo 0)
             if strip --strip-debug "$file" 2>/dev/null; then
                 size_after=$(stat -c%s "$file" 2>/dev/null || echo 0)
-                ((saved += size_before - size_after))
-                ((stripped++)) || true
+                ((++stripped))
+                saved=$((saved + size_before - size_after))
             fi
         fi
     done < <(find "$app_dir" -type f -print0 2>/dev/null)
@@ -235,7 +237,7 @@ clean_locales() {
             done
             if [[ "$keep_it" == false ]]; then
                 rm -rf "$dir"
-                ((removed++)) || true
+                ((++removed))
             fi
         done
     done
@@ -250,7 +252,7 @@ clean_docs() {
         local dir="${app_dir}/${subdir}"
         if [[ -d "$dir" ]]; then
             rm -rf "$dir"
-            ((removed++)) || true
+            ((++removed))
         fi
     done
     echo "$removed"
@@ -472,7 +474,7 @@ do_update() {
     # Patch AppRun
     local apprun="${tmpdir}/squashfs-root/AppRun"
     if [[ -f "$apprun" ]] && grep -q 'if \[ -z "$APPDIR" \]' "$apprun" 2>/dev/null; then
-        sed -i '/if \[ -z "$APPDIR" \]/,/^fi$/c\APPDIR="$(dirname "$(readlink -f "${THIS}")")"' "$apprun"
+        sed -i '/if \[ -z "$APPDIR" \]/,/^[[:space:]]*fi[[:space:]]*$/c\APPDIR="$(dirname "$(readlink -f "${THIS}")")"' "$apprun"
     fi
 
     # Re-apply optimizations if the previous install was optimized
@@ -633,7 +635,7 @@ do_install() {
         exit 1
     fi
 
-    if [[ ! "$APPIMAGE_PATH" == *.AppImage ]] && [[ ! "$APPIMAGE_PATH" == *.appimage ]]; then
+    if [[ "$APPIMAGE_PATH" != *.AppImage && "$APPIMAGE_PATH" != *.appimage ]]; then
         error "Not an AppImage file: $appimage"
         exit 1
     fi
@@ -658,7 +660,7 @@ do_install() {
     # Without this, inherited APPDIR from other AppImages breaks launches
     local apprun="${tmpdir}/squashfs-root/AppRun"
     if [[ -f "$apprun" ]] && grep -q 'if \[ -z "$APPDIR" \]' "$apprun" 2>/dev/null; then
-        sed -i '/if \[ -z "$APPDIR" \]/,/^fi$/c\APPDIR="$(dirname "$(readlink -f "${THIS}")")"' "$apprun"
+        sed -i '/if \[ -z "$APPDIR" \]/,/^[[:space:]]*fi[[:space:]]*$/c\APPDIR="$(dirname "$(readlink -f "${THIS}")")"' "$apprun"
         ok "Patched AppRun (fixed APPDIR detection)"
     fi
 
@@ -703,22 +705,7 @@ do_install() {
     rm -rf "$tmpdir"
     ok "Extracted to ${install_path}"
 
-    # Resolve icon (now relative to install path)
-    if [[ -n "$icon_path" ]]; then
-        icon_path="${install_path}/${icon_path#${install_path}/}"
-        # If it was a relative path from squashfs-root, fix it
-        icon_path=$(echo "$icon_path" | sed "s|.*/squashfs-root/|${install_path}/|")
-        # Resolve symlinks to get a real file
-        if [[ -L "$icon_path" ]]; then
-            local resolved
-            resolved=$(readlink -f "$icon_path" 2>/dev/null)
-            if [[ -f "$resolved" ]]; then
-                icon_path="$resolved"
-            fi
-        fi
-    fi
-
-    # Find the icon again from the installed location
+    # Find the icon from the installed location
     icon_path=$(find_icon "$install_path")
     if [[ -z "$icon_path" ]]; then
         # check root-level png
@@ -902,7 +889,7 @@ do_check_updates() {
                 display_name="${display_name:-$app_name}"
             fi
             updates_available="${updates_available}${display_name}: ${current_version} → ${latest_version}\n"
-            ((count++)) || true
+            ((++count))
         fi
     done
 
