@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { Box, Text, useInput, Spacer } from "ink";
+import { Box, Text, useInput } from "ink";
 import TextInput from "ink-text-input";
 import { execScript } from "../utils/exec.js";
 
@@ -33,26 +33,59 @@ export default function InstallScreen({ onBack, onMessage }: Props) {
     setOutput([]);
     setError(null);
 
-    const args = [path.trim()];
-    if (name.trim()) args.push("--name", name.trim());
-    if (optimize) args.push("--optimize");
-    if (noSandbox) args.push("--no-sandbox");
+    try {
+      const args = [path.trim()];
+      if (name.trim()) args.push("--name", name.trim());
+      if (optimize) args.push("--optimize");
+      if (noSandbox) args.push("--no-sandbox");
 
-    const result = await execScript(
-      args,
-      (chunk) => setOutput((prev) => [...prev.slice(-50), chunk]),
-      (chunk) => setOutput((prev) => [...prev.slice(-50), chunk]),
-    );
+      const result = await execScript(
+        args,
+        (chunk) => setOutput((prev) => [...prev.slice(-50), chunk]),
+        (chunk) => setOutput((prev) => [...prev.slice(-50), chunk]),
+      );
 
-    if (result.exitCode !== 0) {
-      setError(result.stderr || "Installation failed.");
+      if (result.exitCode !== 0) {
+        setError(result.stderr || "Installation failed.");
+        setStep("error");
+      } else {
+        setStep("done");
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
       setStep("error");
-    } else {
-      setStep("done");
     }
   }, [path, name, optimize, noSandbox, onMessage]);
 
   useInput((input, key) => {
+    if (key.escape) {
+      if (step === "path") {
+        onBack();
+        return;
+      }
+      if (step === "options") {
+        setStep("path");
+        onMessage("Enter path to .AppImage file");
+        return;
+      }
+      if (step === "confirm") {
+        setStep("options");
+        onMessage("Configure options");
+        return;
+      }
+      if (step === "done" || step === "error") {
+        setPath("");
+        setName("");
+        setOptimize(false);
+        setNoSandbox(false);
+        setOutput([]);
+        setError(null);
+        setStep("path");
+        onMessage("Enter path to .AppImage file");
+        return;
+      }
+    }
+
     if (step === "options") {
       if (input.toLowerCase() === "o") setOptimize((v) => !v);
       if (input.toLowerCase() === "n") setNoSandbox((v) => !v);
@@ -60,19 +93,12 @@ export default function InstallScreen({ onBack, onMessage }: Props) {
         setStep("confirm");
         onMessage("Press Enter to install or Esc to go back");
       }
-      if (key.escape) {
-        setStep("path");
-        onMessage("Enter path to .AppImage file");
-      }
     } else if (step === "confirm") {
       if (key.return) {
         void runInstall();
-      } else if (key.escape) {
-        setStep("options");
-        onMessage("Configure options");
       }
     } else if (step === "done" || step === "error") {
-      if (key.escape || key.return) {
+      if (key.return) {
         setPath("");
         setName("");
         setOptimize(false);
@@ -142,16 +168,16 @@ export default function InstallScreen({ onBack, onMessage }: Props) {
   }
 
   if (step === "running") {
+    const lines = output.slice(-15);
     return (
       <Box flexDirection="column">
-        <Text color="cyan">Installing...</Text>
-        <Box flexDirection="column" marginTop={1} borderStyle="single" padding={1} height={12}>
-          {output.length === 0 ? (
-            <Text dimColor>Waiting for output...</Text>
+        <Text color="cyan" bold>Installing...</Text>
+        <Box flexDirection="column" marginTop={1} borderStyle="round" paddingX={1}>
+          {lines.length === 0 ? (
+            <Text dimColor> Waiting for output...</Text>
           ) : (
-            output.map((line, i) => <Text key={i}>{line}</Text>)
+            lines.map((line, i) => <Text key={i} dimColor={i < lines.length - 1}>{line}</Text>)
           )}
-          <Spacer />
         </Box>
       </Box>
     );

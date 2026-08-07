@@ -37,17 +37,22 @@ export default function UpdateScreen({ onBack, onMessage }: Props) {
     setError(null);
     onMessage(`Updating ${name}...`);
 
-    const result = await execScript(
-      ["--update", name],
-      (chunk) => setOutput((prev) => [...prev.slice(-30), chunk]),
-      (chunk) => setOutput((prev) => [...prev.slice(-30), chunk]),
-    );
+    try {
+      const result = await execScript(
+        ["--update", name],
+        (chunk) => setOutput((prev) => [...prev.slice(-30), chunk]),
+        (chunk) => setOutput((prev) => [...prev.slice(-30), chunk]),
+      );
 
-    setUpdating(null);
-    if (result.exitCode !== 0) {
-      setError(`Failed to update ${name}: ${result.stderr || result.stdout}`);
-    } else {
-      setDone((prev) => [...prev, name]);
+      if (result.exitCode !== 0) {
+        setError(`Failed to update ${name}: ${result.stderr || result.stdout}`);
+      } else {
+        setDone((prev) => [...prev, name]);
+      }
+    } catch (err) {
+      setError(`Failed to update ${name}: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setUpdating(null);
     }
   }, [onMessage]);
 
@@ -71,16 +76,21 @@ export default function UpdateScreen({ onBack, onMessage }: Props) {
       setError(null);
       onMessage("Updating all apps...");
       void (async () => {
-        const result = await execScript(
-          ["--update-all"],
-          (chunk) => setOutput((prev) => [...prev.slice(-30), chunk]),
-          (chunk) => setOutput((prev) => [...prev.slice(-30), chunk]),
-        );
-        setUpdating(null);
-        if (result.exitCode !== 0) {
-          setError(`Update all failed: ${result.stderr || result.stdout}`);
-        } else {
-          setDone(apps.map((a) => a.name));
+        try {
+          const result = await execScript(
+            ["--update-all"],
+            (chunk) => setOutput((prev) => [...prev.slice(-30), chunk]),
+            (chunk) => setOutput((prev) => [...prev.slice(-30), chunk]),
+          );
+          if (result.exitCode !== 0) {
+            setError(`Update all failed: ${result.stderr || result.stdout}`);
+          } else {
+            setDone(apps.map((a) => a.name));
+          }
+        } catch (err) {
+          setError(`Update all failed: ${err instanceof Error ? err.message : String(err)}`);
+        } finally {
+          setUpdating(null);
         }
       })();
     }
@@ -107,16 +117,17 @@ export default function UpdateScreen({ onBack, onMessage }: Props) {
   }
 
   if (updating) {
+    const lines = output.slice(-15);
     return (
       <Box flexDirection="column">
-        <Text color="cyan">
+        <Text color="cyan" bold>
           <Spinner type="dots" /> Updating {updating === "all" ? "all apps" : updating}...
         </Text>
-        <Box flexDirection="column" marginTop={1} borderStyle="single" padding={1} height={12}>
-          {output.length === 0 ? (
-            <Text dimColor>Waiting for output...</Text>
+        <Box flexDirection="column" marginTop={1} borderStyle="round" paddingX={1}>
+          {lines.length === 0 ? (
+            <Text dimColor> Waiting for output...</Text>
           ) : (
-            output.map((line, i) => <Text key={i}>{line}</Text>)
+            lines.map((line, i) => <Text key={i} dimColor={i < lines.length - 1}>{line}</Text>)
           )}
         </Box>
       </Box>

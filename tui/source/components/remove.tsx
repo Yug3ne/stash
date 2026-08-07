@@ -35,14 +35,19 @@ export default function RemoveScreen({ onBack, onMessage }: Props) {
     setError(null);
     onMessage(`Removing ${name}...`);
 
-    const result = await execScript(["--remove", name]);
-    setRemoving(null);
-    if (result.exitCode !== 0) {
-      setError(`Failed to remove ${name}: ${result.stderr || result.stdout}`);
-    } else {
-      setApps((prev) => prev.filter((a) => a.name !== name));
-      setSelected((s) => Math.max(0, Math.min(s, apps.length - 2)));
-      setConfirming(null);
+    try {
+      const result = await execScript(["--remove", name]);
+      if (result.exitCode !== 0) {
+        setError(`Failed to remove ${name}: ${result.stderr || result.stdout}`);
+      } else {
+        setApps((prev) => prev.filter((a) => a.name !== name));
+        setSelected((s) => Math.max(0, Math.min(s, apps.length - 2)));
+        setConfirming(null);
+      }
+    } catch (err) {
+      setError(`Failed to remove ${name}: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setRemoving(null);
     }
   }, [apps.length, onMessage]);
 
@@ -61,11 +66,11 @@ export default function RemoveScreen({ onBack, onMessage }: Props) {
     } else if (key.downArrow && !confirming) {
       setSelected((s) => (s < apps.length - 1 ? s + 1 : 0));
     } else if (key.return) {
-      const app = apps[selected];
-      if (!app) return;
       if (confirming) {
-        void removeApp(app.name);
+        void removeApp(confirming);
       } else {
+        const app = apps[selected];
+        if (!app) return;
         setConfirming(app.name);
         onMessage(`Press Enter again to remove ${app.name}, Esc to cancel`);
       }

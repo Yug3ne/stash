@@ -29,6 +29,10 @@ export interface ExecResult {
   exitCode: number;
 }
 
+function stripAnsi(input: string): string {
+  return input.replace(/\x1b\[[0-9;]*m/g, "");
+}
+
 export function execScript(
   args: string[],
   onStdout?: (line: string) => void,
@@ -42,22 +46,55 @@ export function execScript(
 
     let stdout = "";
     let stderr = "";
+    let settled = false;
+
+    let stdoutBuf = "";
+    let stderrBuf = "";
 
     child.stdout.on("data", (data: Buffer) => {
       const chunk = data.toString("utf8");
       stdout += chunk;
-      onStdout?.(chunk);
+
+      if (onStdout) {
+        stdoutBuf += chunk;
+        let idx: number;
+        while ((idx = stdoutBuf.indexOf("\n")) !== -1) {
+          const line = stripAnsi(stdoutBuf.slice(0, idx)).trimEnd();
+          stdoutBuf = stdoutBuf.slice(idx + 1);
+          if (line) onStdout(line);
+        }
+      }
     });
 
     child.stderr.on("data", (data: Buffer) => {
       const chunk = data.toString("utf8");
       stderr += chunk;
-      onStderr?.(chunk);
+
+      if (onStderr) {
+        stderrBuf += chunk;
+        let idx: number;
+        while ((idx = stderrBuf.indexOf("\n")) !== -1) {
+          const line = stripAnsi(stderrBuf.slice(0, idx)).trimEnd();
+          stderrBuf = stderrBuf.slice(idx + 1);
+          if (line) onStderr(line);
+        }
+      }
     });
 
-    child.on("error", reject);
     child.on("close", (exitCode) => {
+      if (settled) return;
+      settled = true;
+      if (stdoutBuf && onStdout) onStdout(stripAnsi(stdoutBuf).trimEnd());
+      if (stderrBuf && onStderr) onStderr(stripAnsi(stderrBuf).trimEnd());
       resolve({ stdout, stderr, exitCode: exitCode ?? 0 });
+    });
+
+    child.on("error", (err) => {
+      if (settled) return;
+      settled = true;
+      if (stdoutBuf && onStdout) onStdout(stripAnsi(stdoutBuf).trimEnd());
+      if (stderrBuf && onStderr) onStderr(stripAnsi(stderrBuf).trimEnd());
+      reject(err);
     });
   });
 }
@@ -68,11 +105,6 @@ export interface InstalledApp {
   version: string;
   size: string;
   updatable: boolean;
-}
-
-function stripAnsi(input: string): string {
-  // eslint-disable-next-line no-control-regex
-  return input.replace(/\x1b\[[0-9;]*m/g, "");
 }
 
 export async function listInstalledApps(): Promise<InstalledApp[]> {
