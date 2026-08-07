@@ -3,9 +3,12 @@ set -euo pipefail
 
 REPO="Yug3ne/appimage-installer"
 BIN_NAME="appimage-install-tui"
+CLI_NAME="appimage-install"
 INSTALL_DIR="${INSTALL_DIR:-$HOME/.local/bin}"
 TARGET="$INSTALL_DIR/$BIN_NAME"
-REMOTE_URL="https://raw.githubusercontent.com/$REPO/main/tui/dist/cli.js"
+CLI_TARGET="$INSTALL_DIR/$CLI_NAME"
+TUI_URL="https://raw.githubusercontent.com/$REPO/main/tui/dist/cli.js"
+CLI_URL="https://raw.githubusercontent.com/$REPO/main/appimage-install"
 
 cmd_exists() {
   command -v "$1" >/dev/null 2>&1
@@ -46,21 +49,31 @@ mkdir -p "$INSTALL_DIR"
 
 # 3. Download the TUI binary
 echo "==> Downloading $BIN_NAME from $REPO..."
-curl -fsSL "$REMOTE_URL" -o "$TARGET"
+curl -fsSL "$TUI_URL" -o "$TARGET"
 chmod +x "$TARGET"
 
-# 4. Verify the download
+# 4. Download the CLI backend (required by the TUI)
+echo "==> Downloading $CLI_NAME from $REPO..."
+curl -fsSL "$CLI_URL" -o "$CLI_TARGET"
+chmod +x "$CLI_TARGET"
+
+# 5. Verify the downloads
 if [ ! -s "$TARGET" ]; then
-  echo "ERROR: Downloaded file is empty or missing." >&2
+  echo "ERROR: Downloaded $BIN_NAME is empty or missing." >&2
   exit 1
 fi
 
 if ! head -1 "$TARGET" | grep -q "bun"; then
-  echo "ERROR: Downloaded file does not have a Bun shebang." >&2
+  echo "ERROR: Downloaded $BIN_NAME does not have a Bun shebang." >&2
   exit 1
 fi
 
-# 5. Warn if install dir is not on PATH
+if [ ! -s "$CLI_TARGET" ]; then
+  echo "ERROR: Downloaded $CLI_NAME is empty or missing." >&2
+  exit 1
+fi
+
+# 6. Warn if install dir is not on PATH
 case ":$PATH:" in
   *":$INSTALL_DIR:"*) ;;
   *)
@@ -72,5 +85,9 @@ case ":$PATH:" in
 esac
 
 echo
-echo "==> $BIN_NAME installed to $TARGET"
-echo "   Run it with: $BIN_NAME"
+echo "==> Installed to $INSTALL_DIR"
+echo "   TUI: $BIN_NAME"
+echo "   CLI: $CLI_NAME"
+echo
+echo "   Run the TUI:    $BIN_NAME"
+echo "   Run the CLI:    $CLI_NAME --help"
