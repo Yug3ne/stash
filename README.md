@@ -1,110 +1,124 @@
-# appimage-install
+# Stash
 
-Extract and install AppImages properly — no FUSE overhead, no tmpfs RAM waste, with full desktop integration.
+Install apps on [Omarchy](https://omarchy.org) (or any Arch Linux) from one place. Stash is a single Rust program: run `stash` to open the app, or `stash <command>` in a terminal.
 
-
-
-## Why use this?
-
-AppImages use FUSE to mount a compressed filesystem into `/tmp` (often tmpfs = RAM) every time you run them. On a 16GB laptop running heavy workloads, this wastes hundreds of MB of RAM per app and adds latency to every file read through the FUSE layer.
-
-`appimage-install` extracts the AppImage once, sets up the desktop entry with the correct icon, and creates a terminal command — all in one step.
-
-| | AppImage (FUSE) | appimage-install |
-|---|---|---|
-| Launch speed | Slow (decompress + FUSE mount) | Fast (direct disk read) |
-| RAM overhead | ~150MB+ per app in tmpfs | Zero |
-| Desktop icon | Depends on AppImageLauncher | Always works |
-| Terminal command | None | `~/.local/bin/<name>` |
+- **AppImages**: installed as real apps. Each one is extracted once, with a menu entry, an icon, a terminal command and one-click updates from GitHub.
+- **Arch packages**: search the official repos and the AUR, then install, open or remove.
+- **Essentials**: a hand-picked catalog of popular apps (browsers, editors, chat, media, games…).
+- **Updates**: system packages, AUR packages and AppImages in one list.
+- **Maintenance**: remove unused dependencies and clean the package cache.
 
 ## Install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Yug3ne/appimage-installer/main/appimage-install -o ~/.local/bin/appimage-install
-chmod +x ~/.local/bin/appimage-install
+git clone https://github.com/Yug3ne/stash.git
+cd stash
+./install.sh             # add --notify for a daily AppImage update check
 ```
 
-Or clone:
+This builds Stash, puts `stash` in `~/.local/bin`, and adds **Stash** to your app launcher. To update Stash itself: `git pull && ./install.sh`.
+
+Building needs `rust` and `webkit2gtk-4.1` (`sudo pacman -S rust webkit2gtk-4.1`). Omarchy already has WebKitGTK. Stash itself has no runtime dependencies beyond what Arch ships: no Electron, Node, FUSE or squashfs-tools.
+
+## Why extract AppImages?
+
+A normal AppImage mounts itself through FUSE on every launch and decompresses its files as they're read. Stash extracts it once instead:
+
+| | AppImage (FUSE) | Stash |
+|---|---|---|
+| Launch speed | Slower (mount + decompress) | Fast (plain files on disk) |
+| Menu entry & icon | Only with extra tools | Always |
+| Terminal command | No | `~/.local/bin/<name>` |
+| Updates | Manual | From GitHub releases |
+| Electron apps on Wayland | Often blurry (XWayland) | Native Wayland flags added |
+
+Extraction reads the AppImage's squashfs image directly in Rust, on all CPU cores, without running the AppImage. A 63 MB AppImage extracts in about half a second.
+
+## The app
+
+Run `stash` or open it from the launcher.
+
+| Page | What it does |
+|---|---|
+| **Discover** | Curated essentials, plus search across the repos and the AUR. |
+| **AppImages** | Drop an `.AppImage` on the window, pick one, or paste a GitHub repo (`owner/repo`) or a download link. Lists installed AppImages with Open, Update, Files and Remove. |
+| **Installed** | Packages you installed yourself (not dependencies), filterable by official or AUR. |
+| **Updates** | Everything with an update. "Update system" runs `omarchy-update` on Omarchy (snapshot first), otherwise `yay -Syu`. |
+| **Maintenance** | Unused dependencies, and the package cache size with a cleanup button. |
+
+Anything that needs root (installing or removing packages, cleaning the cache) opens a terminal window, like Omarchy's own menus do. You type your password into the real `sudo` and can see everything pacman prints. Stash waits for the terminal to finish, then refreshes.
+
+The app uses the colors of your current Omarchy theme.
+
+## The command line
 
 ```bash
-git clone https://github.com/Yug3ne/appimage-installer.git
-ln -s "$(pwd)/appimage-installer/appimage-install" ~/.local/bin/appimage-install
+stash install ~/Downloads/MyApp.AppImage          # install a file
+stash install https://example.com/MyApp.AppImage  # download and install
+stash install marktext/marktext                   # latest release from GitHub
+
+stash list                       # installed AppImages (--json too)
+stash updates                    # which have updates (--json, --notify)
+stash update marktext            # update one
+stash update                     # update all
+stash remove marktext            # uninstall
+
+stash pkg search obsidian        # search repos + AUR
+stash pkg install obsidian       # pacman, or yay for AUR packages
+stash pkg remove obsidian
 ```
 
-Make sure `~/.local/bin` is in your `PATH`.
+Install options:
 
-## Usage
+| Option | Meaning |
+|---|---|
+| `--name <name>` | Command and folder name (default: detected from the app) |
+| `--repo <owner/repo>` | GitHub repo to update from. Detected automatically for most Electron apps. |
+| `--optimize` | Strip debug symbols and remove unused languages/docs (smaller, faster to load) |
+| `--no-sandbox` | Launch with `--no-sandbox` (a few Electron apps need it) |
+| `--no-wayland` | Don't add native-Wayland flags to Electron apps |
+| `--keep` | Keep the original `.AppImage` (it's deleted by default) |
 
-```bash
-# Install an AppImage
-appimage-install ~/Downloads/MyApp.AppImage
+Settings like `--optimize` and `--no-sandbox` are remembered and reapplied on every update. Downloads that stall resume where they stopped. Set `GITHUB_TOKEN` if you hit GitHub's rate limit of 60 requests per hour.
 
-# Electron apps need --no-sandbox
-appimage-install ~/Downloads/VSCode.AppImage --no-sandbox
+## Where things go
 
-# Custom name
-appimage-install ~/Downloads/MyApp.AppImage --name myapp
+| What | Where |
+|---|---|
+| Extracted app | `~/.local/opt/<name>/` |
+| Menu entry (and Stash's settings for the app) | `~/.local/share/applications/<name>.desktop` |
+| Command | `~/.local/bin/<name>` |
 
-# Optimize for size/launch speed (strips debug symbols, unused locales, docs)
-appimage-install ~/Downloads/MyApp.AppImage --optimize
+Apps installed by the older `appimage-install` script are recognized and can be updated and removed by Stash.
 
-# List installed apps
-appimage-install --list
+## How the code is organized
 
-#Updated  all updateable appimages
-appimage-install --update-all
-
-#Upadate a specific image
-appimage-install --update appimage
-
-# Remove an app
-appimage-install --remove myapp
+```
+src/
+  main.rs              `stash` → app window, `stash <command>` → command line
+  cli.rs               Command-line commands and output
+  gui.rs               The window, and every action its pages can call
+  appimage/
+    mod.rs             Install, list, update, remove AppImages
+    extract.rs         Unpack the squashfs image inside an AppImage
+    desktop.rs         Read/write .desktop menu entries
+    optimize.rs        --optimize: strip binaries, drop unused languages
+    github.rs          Find the latest AppImage in a GitHub release
+  packages.rs          pacman / AUR: search, lists, install, updates
+  terminal.rs          Run sudo commands in a terminal window
+  http.rs              JSON requests and resumable downloads
+  icons.rs, theme.rs   App icons, Omarchy theme colors
+  util.rs              Small shared helpers
+  catalog.json         The "Essentials" list (easy to edit)
+ui/                    The pages: plain HTML/CSS/JS, no framework or build step
+  api.js               What the pages can ask Rust to do
+  app.js, ui.js        Sidebar, shared UI helpers
+  views/*.js           One file per page
 ```
 
-## Interactive TUI
+The window is [Tauri](https://tauri.app): the pages render in the system's WebKitGTK, and they can only call the functions in `src/gui.rs`, which validate every package and app name before running anything. The command line and the app call the same Rust functions.
 
-For a menu-driven interface, install the optional TUI:
-
-```bash
-# One-line install
-curl -fsSL https://raw.githubusercontent.com/Yug3ne/appimage-installer/main/install-tui.sh | bash
-
-# Then run
-appimage-install-tui
-```
-
-Controls:
-- `↑`/`↓` or letter keys to navigate
-- `Enter` to select
-- `Esc` to go back
-- `q` to quit
-
-The TUI is built with Bun and provides the same install, list, update, and remove commands through an interactive terminal UI.
-
-## What it does
-
-1. Extracts the AppImage with `--appimage-extract`
-2. Optionally optimizes the install (with `--optimize`)
-3. Moves it to `~/.local/opt/<name>/`
-4. Auto-detects the icon (PNG/SVG from embedded hicolor or root)
-5. Creates a `.desktop` entry in `~/.local/share/applications/`
-6. Symlinks `AppRun` to `~/.local/bin/<name>` for terminal use
-7. Removes the original `.AppImage` file
-
-## Performance optimization (`--optimize`)
-
-Pass `--optimize` when installing to make the extracted app smaller and slightly faster to load:
-
-- **Strips debug symbols** from every ELF binary and shared library.
-- **Removes unused locales** — keeps only your current locale plus English/C/POSIX fallbacks.
-- **Removes documentation** such as `man`, `info`, `doc`, and `help` directories.
-
-This reduces disk footprint and cache pressure, which improves cold-start times for large Electron/Qt apps. The optimization setting is saved in the `.desktop` entry and is automatically reapplied on `--update`.
-
-## Requirements
-
-- Bash 4+
-- `update-desktop-database` (from `desktop-file-utils`, installed on most Linux desktops)
+Development: `cargo run` opens the app, `cargo run -- list` runs a command, `cargo test` runs the tests. The pages are compiled into the binary, so rebuild after editing `ui/`.
 
 ## License
 
