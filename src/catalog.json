@@ -1,0 +1,322 @@
+[
+  {
+    "category": "Browsers",
+    "apps": [
+      {
+        "pkg": "firefox",
+        "name": "Firefox",
+        "description": "Fast, private web browser from Mozilla"
+      },
+      {
+        "pkg": "chromium",
+        "name": "Chromium",
+        "description": "Open-source base of Google Chrome"
+      },
+      {
+        "pkg": "brave-bin",
+        "name": "Brave",
+        "description": "Privacy-focused browser with ad blocking"
+      },
+      {
+        "pkg": "zen-browser-bin",
+        "name": "Zen Browser",
+        "description": "Calm, Firefox-based browser with vertical tabs"
+      },
+      {
+        "pkg": "google-chrome",
+        "name": "Google Chrome",
+        "description": "Google's web browser"
+      }
+    ]
+  },
+  {
+    "category": "Development",
+    "apps": [
+      {
+        "pkg": "visual-studio-code-bin",
+        "name": "VS Code",
+        "description": "Microsoft's code editor (official build)"
+      },
+      {
+        "pkg": "zed",
+        "name": "Zed",
+        "description": "High-performance, multiplayer code editor"
+      },
+      {
+        "pkg": "cursor-bin",
+        "name": "Cursor",
+        "description": "AI-first code editor based on VS Code"
+      },
+      {
+        "pkg": "neovim",
+        "name": "Neovim",
+        "description": "Hyperextensible Vim-based text editor"
+      },
+      {
+        "pkg": "docker",
+        "name": "Docker",
+        "description": "Build and run containers"
+      },
+      {
+        "pkg": "docker-compose",
+        "name": "Docker Compose",
+        "description": "Run multi-container apps"
+      },
+      {
+        "pkg": "github-cli",
+        "name": "GitHub CLI",
+        "description": "GitHub from the command line (gh)"
+      },
+      {
+        "pkg": "lazygit",
+        "name": "Lazygit",
+        "description": "Simple terminal UI for git"
+      },
+      {
+        "pkg": "bruno-bin",
+        "name": "Bruno",
+        "description": "Offline-first API client"
+      },
+      {
+        "pkg": "postman-bin",
+        "name": "Postman",
+        "description": "API development platform"
+      },
+      {
+        "pkg": "dbeaver",
+        "name": "DBeaver",
+        "description": "Universal database tool"
+      },
+      {
+        "pkg": "jetbrains-toolbox",
+        "name": "JetBrains Toolbox",
+        "description": "Install and update JetBrains IDEs"
+      },
+      {
+        "pkg": "android-studio",
+        "name": "Android Studio",
+        "description": "Official Android IDE"
+      }
+    ]
+  },
+  {
+    "category": "Communication",
+    "apps": [
+      {
+        "pkg": "discord",
+        "name": "Discord",
+        "description": "Voice, video and text chat"
+      },
+      {
+        "pkg": "vesktop-bin",
+        "name": "Vesktop",
+        "description": "Discord client with Wayland screen sharing"
+      },
+      {
+        "pkg": "telegram-desktop",
+        "name": "Telegram",
+        "description": "Fast, secure messaging"
+      },
+      {
+        "pkg": "signal-desktop",
+        "name": "Signal",
+        "description": "Private messaging"
+      },
+      {
+        "pkg": "slack-desktop",
+        "name": "Slack",
+        "description": "Team chat"
+      },
+      {
+        "pkg": "zoom",
+        "name": "Zoom",
+        "description": "Video meetings"
+      },
+      {
+        "pkg": "thunderbird",
+        "name": "Thunderbird",
+        "description": "Email, calendar and contacts"
+      }
+    ]
+  },
+  {
+    "category": "Productivity",
+    "apps": [
+      {
+        "pkg": "obsidian",
+        "name": "Obsidian",
+        "description": "Markdown knowledge base"
+      },
+      {
+        "pkg": "libreoffice-fresh",
+        "name": "LibreOffice",
+        "description": "Office suite: documents, sheets, slides"
+      },
+      {
+        "pkg": "notion-app-electron",
+        "name": "Notion",
+        "description": "Notes, docs and projects"
+      },
+      {
+        "pkg": "typora",
+        "name": "Typora",
+        "description": "Minimal Markdown editor"
+      },
+      {
+        "pkg": "xournalpp",
+        "name": "Xournal++",
+        "description": "Handwritten notes and PDF annotation"
+      },
+      {
+        "pkg": "anki-bin",
+        "name": "Anki",
+        "description": "Flashcards with spaced repetition"
+      },
+      {
+        "pkg": "evince",
+        "name": "Document Viewer",
+        "description": "PDF and document viewer"
+      }
+    ]
+  },
+  {
+    "category": "Media & Design",
+    "apps": [
+      {
+        "pkg": "spotify-launcher",
+        "name": "Spotify",
+        "description": "Music streaming"
+      },
+      {
+        "pkg": "vlc",
+        "name": "VLC",
+        "description": "Plays almost any video or audio file"
+      },
+      {
+        "pkg": "mpv",
+        "name": "mpv",
+        "description": "Minimal, fast video player"
+      },
+      {
+        "pkg": "obs-studio",
+        "name": "OBS Studio",
+        "description": "Screen recording and live streaming"
+      },
+      {
+        "pkg": "gimp",
+        "name": "GIMP",
+        "description": "Image editor"
+      },
+      {
+        "pkg": "krita",
+        "name": "Krita",
+        "description": "Digital painting"
+      },
+      {
+        "pkg": "inkscape",
+        "name": "Inkscape",
+        "description": "Vector graphics editor"
+      },
+      {
+        "pkg": "pinta",
+        "name": "Pinta",
+        "description": "Simple image editing, like Paint.NET"
+      },
+      {
+        "pkg": "kdenlive",
+        "name": "Kdenlive",
+        "description": "Video editor"
+      },
+      {
+        "pkg": "audacity",
+        "name": "Audacity",
+        "description": "Audio editor and recorder"
+      },
+      {
+        "pkg": "blender",
+        "name": "Blender",
+        "description": "3D creation suite"
+      },
+      {
+        "pkg": "upscayl-bin",
+        "name": "Upscayl",
+        "description": "AI image upscaler"
+      }
+    ]
+  },
+  {
+    "category": "Utilities",
+    "apps": [
+      {
+        "pkg": "localsend-bin",
+        "name": "LocalSend",
+        "description": "AirDrop-style file sharing between devices"
+      },
+      {
+        "pkg": "bitwarden",
+        "name": "Bitwarden",
+        "description": "Open-source password manager"
+      },
+      {
+        "pkg": "1password",
+        "name": "1Password",
+        "description": "Password manager"
+      },
+      {
+        "pkg": "keepassxc",
+        "name": "KeePassXC",
+        "description": "Offline password manager"
+      },
+      {
+        "pkg": "qbittorrent",
+        "name": "qBittorrent",
+        "description": "BitTorrent client"
+      },
+      {
+        "pkg": "tailscale",
+        "name": "Tailscale",
+        "description": "Private network between your devices"
+      },
+      {
+        "pkg": "syncthing",
+        "name": "Syncthing",
+        "description": "Sync folders between devices"
+      },
+      {
+        "pkg": "timeshift",
+        "name": "Timeshift",
+        "description": "System snapshots and restore"
+      },
+      {
+        "pkg": "gnome-disk-utility",
+        "name": "Disks",
+        "description": "Format, partition and inspect drives"
+      },
+      {
+        "pkg": "file-roller",
+        "name": "File Roller",
+        "description": "Open and create archives"
+      }
+    ]
+  },
+  {
+    "category": "Gaming",
+    "apps": [
+      {
+        "pkg": "steam",
+        "name": "Steam",
+        "description": "Valve's game store and launcher"
+      },
+      {
+        "pkg": "lutris",
+        "name": "Lutris",
+        "description": "Play games from any source"
+      },
+      {
+        "pkg": "heroic-games-launcher-bin",
+        "name": "Heroic",
+        "description": "Epic, GOG and Amazon games"
+      }
+    ]
+  }
+]

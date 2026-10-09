@@ -1,0 +1,35 @@
+[package]
+name = "stash"
+version = "2.0.0"
+edition = "2024"
+description = "Install AppImages and Arch Linux packages on Omarchy"
+license = "MIT"
+default-run = "stash"
+
+[dependencies]
+# GUI: a native window rendering the HTML pages in ui/ (uses the system WebKitGTK)
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+# Command line parsing
+clap = { version = "4", features = ["derive"] }
+# Reading AppImages (squashfs) without unsquashfs or FUSE
+backhand = "0.25"
+# HTTP for GitHub releases and AUR search
+ureq = { version = "3", features = ["json"] }
+# Simple error handling: `?` on anything, with readable messages
+anyhow = "1"
+# JSON
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# Parallel work (extraction, stripping, update checks)
+rayon = "1"
+# Icons as data URLs
+base64 = "0.22"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[profile.release]
+lto = "thin"
+codegen-units = 4
+strip = true

@@ -1,6 +1,4 @@
-/node_modules
-/tui/node_modules
-/tui/dist/*
-!/tui/dist/cli.js
+/target/
+/gen/
 *.log
 .DS_Store

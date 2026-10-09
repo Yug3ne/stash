@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "What the Stash pages may use from Tauri itself (our own commands are always allowed)",
+  "windows": ["main"],
+  "permissions": ["core:default", "core:window:allow-set-title"]
+}
