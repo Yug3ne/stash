@@ -79,6 +79,7 @@ async function applyTheme() {
 async function showSystemSummary() {
   const info = await window.api.packages.systemInfo().catch(() => null);
   if (!info) return;
+  window.isOmarchy = info.isOmarchy;
   document
     .getElementById('system-summary')
     .replaceChildren(

@@ -1,4 +1,5 @@
-//! Arch Linux packages: the official repositories (pacman) and the AUR (yay).
+//! Arch Linux packages: the official repositories, Omarchy's own repository
+//! ([omarchy] in pacman.conf, pkgs.omarchy.org) and the AUR (yay).
 //!
 //! Reading (search, lists, updates) runs directly. Anything that changes the
 //! system needs root, so it runs in a terminal window; see terminal.rs.
@@ -11,7 +12,9 @@ use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
-use std::time::Duration;
+use std::process::{Command, Stdio};
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
 /// A package in search results or the installed list.
 #[derive(Debug, Clone, Serialize)]
@@ -20,7 +23,7 @@ pub struct Package {
     pub name: String,
     pub version: String,
     pub description: String,
-    /// "repo" or "aur"
+    /// "repo" (official Arch), "omarchy" (Omarchy's repository) or "aur"
     pub source: String,
     /// Repository name: "core", "extra", "omarchy", "aur", …
     pub repo: String,
@@ -61,9 +64,42 @@ fn installed_names() -> Result<HashSet<String>> {
     Ok(lines(&output("pacman", &["-Qq"])?))
 }
 
+/// Which repository each package comes from: name → "core", "extra",
+/// "omarchy", … When a name is in several, the first repo in pacman.conf wins,
+/// like it does for pacman (Omarchy lists its own repo first).
+fn sync_repos() -> HashMap<String, String> {
+    let mut repos = HashMap::new();
+    for line in output_lenient("pacman", &["-Sl"]).lines() {
+        let mut words = line.split_whitespace();
+        if let (Some(repo), Some(name)) = (words.next(), words.next()) {
+            repos.entry(name.to_string()).or_insert_with(|| repo.to_string());
+        }
+    }
+    repos
+}
+
+/// "omarchy" for Omarchy's repository, "aur" for the AUR, "repo" for official Arch.
+fn source_of(repo: &str) -> &'static str {
+    match repo {
+        "omarchy" => "omarchy",
+        "aur" => "aur",
+        _ => "repo",
+    }
+}
+
+/// Packages not in any repository: installed from the AUR (or by hand).
+fn foreign_names() -> HashSet<String> {
+    lines(&output_lenient("pacman", &["-Qqm"]))
+}
+
+/// yay builds AUR packages with whatever Go is on PATH. mise's GOROOT/GOBIN
+/// (Omarchy sets mise up) would make Go packages fail to build, so drop them,
+/// like omarchy-update does.
+const AUR_ENV: &str = "unset GOROOT GOBIN; ";
+
 // ─── Searching ──────────────────────────────────────────────────────────────
 
-/// Search the official repos and the AUR at the same time.
+/// Search the repos (official and Omarchy's) and the AUR at the same time.
 pub fn search(query: &str) -> Result<Vec<Package>> {
     let query = query.trim().to_lowercase();
     if query.len() < 2 {
@@ -86,7 +122,7 @@ pub fn search(query: &str) -> Result<Vec<Package>> {
     Ok(results)
 }
 
-/// Higher is better: exact name, then name match, then official over AUR, then votes.
+/// Higher is better: exact name, then name match, then repos over AUR, then votes.
 fn rank(pkg: &Package, query: &str) -> u32 {
     let mut score = 0;
     if pkg.name == query {
@@ -96,7 +132,7 @@ fn rank(pkg: &Package, query: &str) -> u32 {
     } else if pkg.name.contains(query) {
         score += 200;
     }
-    if pkg.source == "repo" {
+    if pkg.source != "aur" {
         score += 100;
     }
     score + pkg.votes.min(5000) / 50
@@ -124,7 +160,7 @@ fn search_repos(query: &str) -> Result<Vec<Package>> {
             name: name.into(),
             version: version.into(),
             description: description.into(),
-            source: "repo".into(),
+            source: source_of(repo).into(),
             repo: repo.into(),
             ..empty_package()
         });
@@ -250,7 +286,7 @@ pub fn status(names: &[String]) -> Result<HashMap<String, Package>> {
 /// Packages you installed on purpose (not pulled in as dependencies).
 pub fn list_installed() -> Result<Vec<Package>> {
     let text = output("pacman", &["-Qei"])?;
-    let foreign = lines(&output_lenient("pacman", &["-Qqm"]));
+    let repos = sync_repos();
 
     // `pacman -Qi` prints "Key   : value" blocks separated by blank lines.
     let mut packages: Vec<Package> = text
@@ -259,8 +295,11 @@ pub fn list_installed() -> Result<Vec<Package>> {
             let info = parse_info_block(block);
             let name = info.get("Name")?.clone();
             let field = |key: &str| info.get(key).cloned().unwrap_or_default();
+            // Not in any repo: it came from the AUR.
+            let repo = repos.get(&name).map_or("aur", String::as_str);
             Some(Package {
-                source: if foreign.contains(&name) { "aur".into() } else { "repo".into() },
+                source: source_of(repo).into(),
+                repo: repo.into(),
                 version: field("Version"),
                 description: field("Description"),
                 size: field("Installed Size"),
@@ -302,7 +341,7 @@ fn parse_info_block(block: &str) -> HashMap<String, String> {
 
 // ─── Updates & maintenance ──────────────────────────────────────────────────
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct PackageUpdate {
     pub name: String,
     pub current: String,
@@ -310,9 +349,51 @@ pub struct PackageUpdate {
     pub source: String,
 }
 
+/// The last check, reused for a little while: the window asks from several
+/// pages at once (sidebar badge, Installed, Updates).
+static LAST_CHECK: Mutex<Option<(Instant, Vec<PackageUpdate>)>> = Mutex::new(None);
+const REUSE_CHECK_FOR: Duration = Duration::from_secs(60);
+
+/// Forget the last check, after something was installed, updated or removed.
+pub fn forget_last_check() {
+    *LAST_CHECK.lock().unwrap_or_else(|e| e.into_inner()) = None;
+}
+
 /// Pending system updates. `checkupdates` (from pacman-contrib) syncs a private
 /// copy of the package database, so this needs no root and changes nothing.
+///
+/// Checks run one at a time: two `checkupdates` at once share that private
+/// database and one of them fails, which would look like "no updates".
 pub fn check_updates() -> Vec<PackageUpdate> {
+    let mut last = LAST_CHECK.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some((when, updates)) = last.as_ref()
+        && when.elapsed() < REUSE_CHECK_FOR
+    {
+        return updates.clone();
+    }
+    let updates = find_updates();
+    *last = Some((Instant::now(), updates.clone()));
+    updates
+}
+
+/// Run `checkupdates`. It exits with 2 when there are no updates and 1 when it
+/// failed, for example because something else (like Omarchy's own update
+/// check) was using its database at that moment; then try again.
+fn run_checkupdates() -> String {
+    for attempt in 0..4 {
+        if attempt > 0 {
+            std::thread::sleep(Duration::from_secs(2));
+        }
+        match Command::new("checkupdates").arg("--nocolor").stdin(Stdio::null()).stderr(Stdio::null()).output() {
+            Ok(out) if out.status.code() != Some(1) => return String::from_utf8_lossy(&out.stdout).into_owned(),
+            Ok(_) => continue,
+            Err(_) => return String::new(), // pacman-contrib not installed
+        }
+    }
+    String::new()
+}
+
+fn find_updates() -> Vec<PackageUpdate> {
     let parse = |text: String, source: &str| -> Vec<PackageUpdate> {
         text.lines()
             .filter_map(|line| {
@@ -331,10 +412,14 @@ pub fn check_updates() -> Vec<PackageUpdate> {
             .collect()
     };
     let (repo, aur) = rayon::join(
-        || output_lenient("checkupdates", &["--nocolor"]),
+        run_checkupdates,
         || if command_exists("yay") { output_lenient("yay", &["-Qua"]) } else { String::new() },
     );
+    let repos = sync_repos();
     let mut updates = parse(repo, "repo");
+    for update in &mut updates {
+        update.source = repos.get(&update.name).map_or("repo", |r| source_of(r)).into();
+    }
     updates.extend(parse(aur, "aur"));
     updates
 }
@@ -347,6 +432,8 @@ pub struct SystemInfo {
     pub explicit_count: usize,
     pub total_count: usize,
     pub has_yay: bool,
+    /// Running Omarchy: system updates go through omarchy-update.
+    pub is_omarchy: bool,
 }
 
 pub fn system_info() -> SystemInfo {
@@ -357,6 +444,7 @@ pub fn system_info() -> SystemInfo {
         explicit_count: count(output_lenient("pacman", &["-Qqe"])),
         total_count: count(output_lenient("pacman", &["-Qq"])),
         has_yay: command_exists("yay"),
+        is_omarchy: command_exists("omarchy-update"),
     }
 }
 
@@ -364,7 +452,9 @@ pub fn system_info() -> SystemInfo {
 
 /// Run in a terminal and turn the exit code into a Result.
 fn in_terminal(title: &str, script: &str) -> Result<()> {
-    match run_in_terminal(title, script)? {
+    let result = run_in_terminal(title, script);
+    forget_last_check(); // even a failed run may have changed something
+    match result? {
         0 => Ok(()),
         CANCELLED => bail!("Cancelled"),
         code => bail!("Failed (exit code {code}), see the terminal for details"),
@@ -385,7 +475,38 @@ pub fn install(names: &[String]) -> Result<()> {
     if !command_exists("yay") {
         bail!("{} is in the AUR, which needs yay", from_aur[0]);
     }
-    in_terminal(&format!("Installing {list}"), &format!("yay -S --needed --noconfirm {list}"))
+    in_terminal(&format!("Installing {list}"), &format!("{AUR_ENV}yay -S --needed --noconfirm {list}"))
+}
+
+/// Update individual packages.
+///
+/// Only AUR packages can be updated one at a time. Packages from the official
+/// and Omarchy repositories are built against each other, and Arch doesn't
+/// support upgrading just some of them ("partial upgrades" can leave apps
+/// unable to start), so those go through a full system update instead.
+pub fn update(names: &[String]) -> Result<()> {
+    check_updatable(names)?;
+    let list = names.join(" ");
+    // -S without --needed rebuilds even if pacman thinks it's current, which is
+    // what "Update" should do for -git packages too.
+    in_terminal(&format!("Updating {list}"), &format!("{AUR_ENV}yay -S --noconfirm {list}"))
+}
+
+/// Errors unless every package is an installed AUR package and yay is there.
+pub fn check_updatable(names: &[String]) -> Result<()> {
+    check_names(names)?;
+    let foreign = foreign_names();
+    if let Some(name) = names.iter().find(|n| !foreign.contains(*n)) {
+        let installed = installed_names()?;
+        if !installed.contains(name) {
+            bail!("{name} is not installed");
+        }
+        bail!("{name} comes from a repository, so it's updated with the rest of the system (Update system)");
+    }
+    if !command_exists("yay") {
+        bail!("Updating AUR packages needs yay");
+    }
+    Ok(())
 }
 
 /// Remove packages, their config backups and dependencies nothing else uses.
@@ -400,7 +521,7 @@ pub fn upgrade_system() -> Result<()> {
     if command_exists("omarchy-update") {
         in_terminal("Updating Omarchy", "omarchy-update")
     } else if command_exists("yay") {
-        in_terminal("Updating system", "yay -Syu")
+        in_terminal("Updating system", &format!("{AUR_ENV}yay -Syu"))
     } else {
         in_terminal("Updating system", "sudo pacman -Syu")
     }
@@ -444,6 +565,14 @@ mod tests {
         assert!(!is_valid_name("rm -rf"));
         assert!(!is_valid_name("--noconfirm"));
         assert!(!is_valid_name("$(evil)"));
+    }
+
+    #[test]
+    fn sources() {
+        assert_eq!(source_of("omarchy"), "omarchy");
+        assert_eq!(source_of("extra"), "repo");
+        assert_eq!(source_of("multilib"), "repo");
+        assert_eq!(source_of("aur"), "aur");
     }
 
     #[test]
