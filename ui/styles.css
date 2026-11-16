@@ -243,9 +243,13 @@ input[type='checkbox'] {
 }
 .toolbar {
   display: flex;
+  flex-wrap: wrap;
   gap: 12px;
   align-items: center;
   margin-bottom: 14px;
+}
+.toolbar .search {
+  min-width: 220px;
 }
 .tabs {
   display: flex;
@@ -396,6 +400,10 @@ input[type='checkbox'] {
 .source.appimage {
   color: var(--green);
   border-color: color-mix(in srgb, var(--green) 40%, transparent);
+}
+.source.omarchy {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
 }
 .source.warn {
   color: var(--red);

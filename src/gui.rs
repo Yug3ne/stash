@@ -142,8 +142,14 @@ async fn packages_status(names: Vec<String>) -> CmdResult<std::collections::Hash
 }
 
 #[tauri::command]
-async fn packages_check_updates() -> CmdResult<Vec<packages::PackageUpdate>> {
-    blocking(|| Ok(packages::check_updates())).await
+async fn packages_check_updates(fresh: Option<bool>) -> CmdResult<Vec<packages::PackageUpdate>> {
+    blocking(move || {
+        if fresh == Some(true) {
+            packages::forget_last_check();
+        }
+        Ok(packages::check_updates())
+    })
+    .await
 }
 
 #[tauri::command]
@@ -154,6 +160,11 @@ async fn system_info() -> CmdResult<packages::SystemInfo> {
 #[tauri::command]
 async fn packages_install(names: Vec<String>) -> CmdResult<()> {
     blocking(move || packages::install(&names)).await
+}
+
+#[tauri::command]
+async fn packages_update(names: Vec<String>) -> CmdResult<()> {
+    blocking(move || packages::update(&names)).await
 }
 
 #[tauri::command]
@@ -234,6 +245,7 @@ pub fn run() {
             packages_check_updates,
             system_info,
             packages_install,
+            packages_update,
             packages_remove,
             packages_launch,
             packages_upgrade,

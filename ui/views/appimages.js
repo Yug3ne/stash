@@ -168,44 +168,52 @@ function appRow(app, refresh) {
         app.repo ? ` · updates from ${app.repo}` : ' · no update source',
       ),
     ),
-    h(
-      'div',
-      { class: 'button-row' },
-      h('button', { class: 'small', onclick: () => window.api.appimages.launch(app.name) }, 'Open'),
-      app.repo &&
-        h(
-          'button',
-          {
-            class: latest ? 'primary small' : 'ghost small',
-            onclick: async () => {
-              if (await runTask(`Updating ${app.displayName}`, () => window.api.appimages.update(app.name), { success: `${app.displayName} is up to date`, showLog: true })) {
-                delete updatesByName[app.name];
-                document.dispatchEvent(new Event('updates:changed'));
-                refresh();
-              }
-            },
-          },
-          'Update',
-        ),
-      h('button', { class: 'ghost small', title: 'Show files', onclick: () => window.api.showFolder(app.path) }, 'Files'),
+    appButtons(app, latest, refresh),
+  );
+}
+
+/** Open / Update / Files / Remove for an installed AppImage. Shared with the Installed page. */
+export function appButtons(app, latest, refresh) {
+  return h(
+    'div',
+    { class: 'button-row' },
+    h('button', { class: 'small', onclick: () => window.api.appimages.launch(app.name).catch((e) => toast(e.message, 'error')) }, 'Open'),
+    app.repo &&
       h(
         'button',
         {
-          class: 'ghost small danger-text',
+          class: latest ? 'primary small' : 'ghost small',
+          title: latest ? `Update to ${latest}` : 'Check GitHub for a newer version and install it',
           onclick: async () => {
-            const ok = await confirmDialog({
-              title: `Remove ${app.displayName}?`,
-              message: 'The app, its menu entry and its command will be deleted. Your settings in ~/.config are kept.',
-              confirm: 'Remove',
-              danger: true,
-            });
-            if (ok && (await runTask(`Removing ${app.displayName}`, () => window.api.appimages.remove(app.name), { success: `${app.displayName} removed` }))) {
+            if (await runTask(`Updating ${app.displayName}`, () => window.api.appimages.update(app.name), { success: `${app.displayName} is up to date`, showLog: true })) {
+              delete updatesByName[app.name];
+              document.dispatchEvent(new Event('updates:changed'));
               refresh();
             }
           },
         },
-        'Remove',
+        'Update',
       ),
+    h('button', { class: 'ghost small', title: 'Show files', onclick: () => window.api.showFolder(app.path) }, 'Files'),
+    h(
+      'button',
+      {
+        class: 'ghost small danger-text',
+        onclick: async () => {
+          const ok = await confirmDialog({
+            title: `Remove ${app.displayName}?`,
+            message: 'The app, its menu entry and its command will be deleted. Your settings in ~/.config are kept.',
+            confirm: 'Remove',
+            danger: true,
+          });
+          if (ok && (await runTask(`Removing ${app.displayName}`, () => window.api.appimages.remove(app.name), { success: `${app.displayName} removed` }))) {
+            delete updatesByName[app.name];
+            document.dispatchEvent(new Event('updates:changed'));
+            refresh();
+          }
+        },
+      },
+      'Remove',
     ),
   );
 }

@@ -46,7 +46,7 @@ pub enum Cmd {
     Update { name: Option<String> },
     /// Uninstall an AppImage
     Remove { name: String },
-    /// Arch Linux packages (official repos and the AUR)
+    /// Arch Linux packages (official repos, Omarchy's repo and the AUR)
     #[command(subcommand)]
     Pkg(PkgCmd),
 }
@@ -75,10 +75,14 @@ pub struct InstallFlags {
 
 #[derive(Subcommand)]
 pub enum PkgCmd {
-    /// Search the official repos and the AUR
+    /// Search the official repos, Omarchy's repo and the AUR
     Search { query: Vec<String> },
     /// Install packages (pacman, or yay for AUR packages)
     Install { names: Vec<String> },
+    /// List packages with updates (official, Omarchy and AUR)
+    Updates,
+    /// Update AUR packages one at a time (repo packages update with the system)
+    Update { names: Vec<String> },
     /// Remove packages and the dependencies nothing else needs
     Remove { names: Vec<String> },
 }
@@ -157,12 +161,28 @@ fn run_pkg(command: PkgCmd) -> Result<()> {
             let in_repos = crate::util::output("pacman", &["-Slq"])?;
             let all_official = names.iter().all(|n| in_repos.lines().any(|l| l == n));
             let mut cmd = if all_official { Command::new("sudo") } else { Command::new("yay") };
+            cmd.env_remove("GOROOT").env_remove("GOBIN"); // see AUR_ENV in packages.rs
             if all_official {
                 cmd.args(["pacman", "-S", "--needed"]);
             } else {
                 cmd.args(["-S", "--needed"]);
             }
             check_status(cmd.args(&names).status()?)?;
+        }
+        PkgCmd::Updates => {
+            let updates = packages::check_updates();
+            if updates.is_empty() {
+                print(Msg::Done("All packages are up to date".into()));
+            }
+            for update in updates {
+                println!("  {:<10} {}: {} → {}", update.source, update.name, update.current, update.latest);
+            }
+        }
+        PkgCmd::Update { names } => {
+            packages::check_updatable(&names)?;
+            let mut yay = Command::new("yay");
+            yay.env_remove("GOROOT").env_remove("GOBIN"); // see AUR_ENV in packages.rs
+            check_status(yay.arg("-S").args(&names).status()?)?;
         }
         PkgCmd::Remove { names } => {
             check_status(Command::new("sudo").args(["pacman", "-Rns"]).args(&names).status()?)?;

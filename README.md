@@ -3,9 +3,9 @@
 Install apps on [Omarchy](https://omarchy.org) (or any Arch Linux) from one place. Stash is a single Rust program: run `stash` to open the app, or `stash <command>` in a terminal.
 
 - **AppImages**: installed as real apps. Each one is extracted once, with a menu entry, an icon, a terminal command and one-click updates from GitHub.
-- **Arch packages**: search the official repos and the AUR, then install, open or remove.
+- **Arch packages**: search the official Arch repos, Omarchy's own package repository and the AUR, then install, open, update or remove.
 - **Essentials**: a hand-picked catalog of popular apps (browsers, editors, chat, media, games…).
-- **Updates**: system packages, AUR packages and AppImages in one list.
+- **Updates**: system packages, AUR packages and AppImages in one list, each AUR package and AppImage updatable on its own.
 - **Maintenance**: remove unused dependencies and clean the package cache.
 
 ## Install
@@ -40,15 +40,21 @@ Run `stash` or open it from the launcher.
 
 | Page | What it does |
 |---|---|
-| **Discover** | Curated essentials, plus search across the repos and the AUR. |
+| **Discover** | Curated essentials, plus search across the Arch repos, the Omarchy repo and the AUR. |
 | **AppImages** | Drop an `.AppImage` on the window, pick one, or paste a GitHub repo (`owner/repo`) or a download link. Lists installed AppImages with Open, Update, Files and Remove. |
-| **Installed** | Packages you installed yourself (not dependencies), filterable by official or AUR. |
-| **Updates** | Everything with an update. "Update system" runs `omarchy-update` on Omarchy (snapshot first), otherwise `yay -Syu`. |
+| **Installed** | Everything you installed yourself: packages (not dependencies) and AppImages. Filter by Official, Omarchy, AUR, AppImages or Updates. Every row has Open, Update (when there is one) and Remove. |
+| **Updates** | Everything with an update. AUR packages and AppImages each have their own Update button. "Update system" runs `omarchy-update` on Omarchy (snapshot first), otherwise `yay -Syu`. |
 | **Maintenance** | Unused dependencies, and the package cache size with a cleanup button. |
 
 Anything that needs root (installing or removing packages, cleaning the cache) opens a terminal window, like Omarchy's own menus do. You type your password into the real `sudo` and can see everything pacman prints. Stash waits for the terminal to finish, then refreshes.
 
 The app uses the colors of your current Omarchy theme.
+
+### On Omarchy
+
+Omarchy adds its own pacman repository, `[omarchy]` (pkgs.omarchy.org), with apps like Brave, Cursor, Zen, Typora and 1Password. Stash labels these **omarchy**, installs them with pacman (no AUR build), and lists them under their own tab. The AUR is still available through yay, which Omarchy installs.
+
+Packages from a repository (official Arch or Omarchy) can't be updated one at a time: Arch only supports upgrading them all together, and updating one alone can stop other apps from starting. Their Update button explains this and offers `omarchy-update`, which is what Omarchy's own menu runs. AUR packages and AppImages update individually.
 
 ## The command line
 
@@ -63,8 +69,10 @@ stash update marktext            # update one
 stash update                     # update all
 stash remove marktext            # uninstall
 
-stash pkg search obsidian        # search repos + AUR
+stash pkg search obsidian        # search Arch + Omarchy repos and the AUR
 stash pkg install obsidian       # pacman, or yay for AUR packages
+stash pkg updates                # packages with updates (official, omarchy, aur)
+stash pkg update android-studio  # update one AUR package
 stash pkg remove obsidian
 ```
 
@@ -104,7 +112,7 @@ src/
     desktop.rs         Read/write .desktop menu entries
     optimize.rs        --optimize: strip binaries, drop unused languages
     github.rs          Find the latest AppImage in a GitHub release
-  packages.rs          pacman / AUR: search, lists, install, updates
+  packages.rs          pacman (Arch + Omarchy repos) / AUR: search, lists, install, updates
   terminal.rs          Run sudo commands in a terminal window
   http.rs              JSON requests and resumable downloads
   icons.rs, theme.rs   App icons, Omarchy theme colors
